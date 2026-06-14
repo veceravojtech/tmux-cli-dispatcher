@@ -17,7 +17,7 @@ PAUSED="$WORKER_HOME/PAUSED"
 # NEW-count check is scoped to exactly the tasks this worker would claim.
 LANE="$(cd "$PROJECT_DIR" 2>/dev/null && "$TMUXCLI" api-project 2>/dev/null)"
 
-CONSUME_N="${CONSUME_N:-3}"; POLL="${POLL:-20}"; POLL_IDLE="${POLL_IDLE:-60}"
+CONSUME_N="${CONSUME_N:-10}"; POLL="${POLL:-20}"; POLL_IDLE="${POLL_IDLE:-60}"
 GRACE="${GRACE:-600}"; HEARTBEAT="${HEARTBEAT:-300}"
 
 log() { local m="$(date -u +%FT%TZ) $*"; echo "$m"; echo "$m" >> "$LOG"; }
