@@ -1,0 +1,4 @@
+# Place the Ed25519 signing key here as `private.pem` (PKCS#8 PEM) before deploying.
+# It is gitignored — never committed. install.sh copies it to ~/.tmux-cli-worker/keys/.
+# This is the same shared client key tmux-cli embeds; the dispatcher's Node helpers
+# use it to sign backend API calls (registry fetch + queue count).

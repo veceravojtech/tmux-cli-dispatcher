@@ -1,0 +1,5 @@
+# The Ed25519 signing key is a secret — never commit it.
+/keys/*.pem
+*.log
+.up.lock
+PAUSED
