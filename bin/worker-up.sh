@@ -29,6 +29,14 @@ find_worker_session() {  # $1 = project path
   return 1
 }
 
+dispatcher_running() {  # $1 = project path
+  local line
+  while IFS= read -r line; do
+    [[ "$line" == *"dispatcher.sh $1" ]] && return 0
+  done < <(pgrep -af 'dispatcher\.sh' 2>/dev/null)
+  return 1
+}
+
 while IFS=$'\t' read -r name path repo branch; do
   [ -z "$name" ] || [ -z "$path" ] && continue
   # 1) provision: clone the repo into path if it isn't there yet
@@ -47,7 +55,7 @@ while IFS=$'\t' read -r name path repo branch; do
     ( cd "$path" && TERM=xterm "$TMUXCLI" start >>"$LOG" 2>&1 ); sleep 12
   fi
   # 3) lane-scoped dispatcher (PROJECT_DIR arg => one per project)
-  if ! pgrep -f "dispatcher.sh $path" >/dev/null 2>&1; then
+  if ! dispatcher_running "$path"; then
     log "[$name] dispatcher down — (re)starting"
     tmux kill-session -t "worker-ctl-$name" 2>/dev/null
     tmux new-session -d -s "worker-ctl-$name" -n dispatcher "bash $WORKER_HOME/dispatcher.sh '$path'"
