@@ -154,6 +154,10 @@ while true; do
     log "lane NEW=$N, window-0 idle (stable) → dispatch consume $CONSUME_N"
     send_consume "$S"; idle_streak=0; sleep "$POLL"
   else
+    # Idle with an empty queue: still keep tmux-cli current (self-throttled), so a
+    # released build is adopted without waiting for the next task. Recycle stays
+    # deferred — session_stale picks up the new binary at the next consume.
+    maybe_build_cli
     rm -f "$LOCK"; now=$(date +%s)
     [ $(( now - last_hb )) -ge "$HEARTBEAT" ] && { log "idle — lane queue empty (NEW=0)"; last_hb=$now; }
     sleep "$POLL_IDLE"
