@@ -127,6 +127,14 @@ while true; do
   [ -f "$PAUSED" ] && { log "PAUSED flag present — exiting (cron will not revive while flag exists)"; exit 0; }
   ensure_session
   S=$(find_session) || { log "session unavailable; retry ${POLL_IDLE}s"; sleep "$POLL_IDLE"; continue; }
+  # Per-lane pause (set near-instantly by control-listener on a 'paused'/'stopped'
+  # desiredState): keep the session warm but stop consuming. Global PAUSED (above)
+  # exits; this one just idles the lane.
+  if [ -n "$LANE" ] && [ -f "$WORKER_HOME/PAUSED-$LANE" ]; then
+    idle_streak=0; rm -f "$LOCK"; now=$(date +%s)
+    [ $(( now - last_hb )) -ge "$HEARTBEAT" ] && { log "lane PAUSED ($LANE) — session warm, not consuming"; last_hb=$now; }
+    sleep "$POLL_IDLE"; continue
+  fi
   if taskvisor_active;       then idle_streak=0; sleep "$POLL"; continue; fi
   if goal_windows_open "$S"; then idle_streak=0; sleep "$POLL"; continue; fi
   if ! window0_idle "$S";    then idle_streak=0; sleep "$POLL"; continue; fi

@@ -32,6 +32,8 @@ worker or dispatcher is revived within ~60s.
 | `dispatcher.sh <project-path>` | The per-project poll loop. Gates on: taskvisor not active, no goal windows, supervisor Claude provably idle (`esc to interrupt` absent, no modal dialog, debounced), and lane `NEW>0`; then sends `/clear` + `/tmux:task-list consume N`. |
 | `registry.js [hostname]` | Signed `GET /api/v1/project-bindings` → prints `name<TAB>path<TAB>repo<TAB>branch` lines for this host. |
 | `be-queue-count.js <status> [project]` | Signed `GET /api/v1/tasks?status=&project=` → prints the count (the dispatcher's NEW-in-lane gate). |
+| `status-report.js [--loop]` | Signed `POST /api/v1/dispatchers/heartbeat` — reports each project's live worker state (session/consuming/idle, current goal, lane NEW) for the web fleet view. One per host. |
+| `control-listener.js` | Long-polls `GET /api/v1/dispatchers/commands` and enacts `desiredState` near-instantly: `paused`→touch `PAUSED-<project>`, `running`→clear it, `stopped`→clear+kill the session. One per host. |
 
 Lane = the **project name** (e.g. `cli`, `web`) = a worker's working-folder
 basename; the registry maps the name → `{machine, absolute path, repo}`.

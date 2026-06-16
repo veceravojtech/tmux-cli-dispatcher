@@ -61,3 +61,20 @@ while IFS=$'\t' read -r name path repo branch; do
     tmux new-session -d -s "worker-ctl-$name" -n dispatcher "bash $WORKER_HOME/dispatcher.sh '$path'"
   fi
 done <<< "$BINDINGS"
+
+# Host-level fleet daemons (one each, covering ALL of this host's projects):
+#   status-report   — POSTs per-project heartbeats to the backend
+#   control-listener — long-polls for near-instant pause/resume/stop
+# Kept alive here like the dispatchers. Both no-op gracefully until the web fleet
+# API is deployed (they log a 404 and retry), so they're safe to run now.
+proc_running() { pgrep -af "$1" >/dev/null 2>&1; }
+if ! proc_running 'status-report\.js'; then
+  log "[fleet] status-report down — (re)starting"
+  tmux kill-session -t worker-status 2>/dev/null
+  tmux new-session -d -s worker-status "node '$WORKER_HOME/status-report.js' --loop >> '$WORKER_HOME/status-report.log' 2>&1"
+fi
+if ! proc_running 'control-listener\.js'; then
+  log "[fleet] control-listener down — (re)starting"
+  tmux kill-session -t worker-control 2>/dev/null
+  tmux new-session -d -s worker-control "node '$WORKER_HOME/control-listener.js' >> '$WORKER_HOME/control-listener.log' 2>&1"
+fi
