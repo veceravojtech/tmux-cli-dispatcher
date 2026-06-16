@@ -81,20 +81,29 @@ maybe_build_cli() {
   (
     flock -n 9 || exit 0   # another dispatcher is already building → skip this pass
     git -C "$CLI_SRC" fetch --quiet 2>>"$LOG" || exit 0
-    if git -C "$CLI_SRC" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 \
-       && git -C "$CLI_SRC" diff --quiet 2>/dev/null \
-       && git -C "$CLI_SRC" diff --cached --quiet 2>/dev/null; then
+    local clean=0
+    git -C "$CLI_SRC" diff --quiet 2>/dev/null && git -C "$CLI_SRC" diff --cached --quiet 2>/dev/null && clean=1
+    if [ "$clean" = 1 ] && git -C "$CLI_SRC" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
       git -C "$CLI_SRC" merge --ff-only --quiet '@{u}' 2>>"$LOG" \
         || log "cli: ff-merge skipped (branch diverged from upstream)"
     else
       log "cli: ff-merge skipped (no upstream or local changes) — building current HEAD"
     fi
+    # Key the rebuild on commit identity, not the "-dirty" suffix: `make build`
+    # runs gofmt, so a checkout whose committed code isn't gofmt-clean always
+    # yields a -dirty binary. Comparing without -dirty avoids a perpetual
+    # rebuild+recycle loop when the tree simply can't build clean.
     local want have
-    want=$(git -C "$CLI_SRC" describe --tags --match 'v*' --always --dirty 2>/dev/null)
-    have=$("$TMUXCLI" --version 2>/dev/null | awk '{print $3}')
+    want=$(git -C "$CLI_SRC" describe --tags --match 'v*' --always 2>/dev/null)
+    have=$("$TMUXCLI" --version 2>/dev/null | awk '{print $3}'); have=${have%-dirty}
     [ -n "$want" ] && [ "$want" != "$have" ] || exit 0
     log "cli: building ${have:-unknown} -> $want (make -C $CLI_SRC install)"
     if make -C "$CLI_SRC" install >>"$LOG" 2>&1 && "$TMUXCLI" --version >/dev/null 2>&1; then
+      # gofmt may have reformatted committed files; if we started clean, restore
+      # them so a build-dirtied tree never blocks future ff-merges.
+      if [ "$clean" = 1 ] && { ! git -C "$CLI_SRC" diff --quiet || ! git -C "$CLI_SRC" diff --cached --quiet; }; then
+        git -C "$CLI_SRC" checkout -- . 2>>"$LOG" && log "cli: reverted build-induced gofmt changes"
+      fi
       log "cli: installed $want"
     else
       log "cli: build FAILED — keeping ${have:-existing} binary"
