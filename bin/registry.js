@@ -11,7 +11,7 @@ const sig = crypto.sign(null, Buffer.from(ts, 'utf8'), key).toString('base64');
 const url = new URL(BASE + '/api/v1/project-bindings');
 url.searchParams.set('hostname', hostname);
 const req = https.request(url, { method: 'GET', timeout: 8000, headers: {
-  'X-Signature': sig, 'X-Timestamp': ts, 'X-Fingerprint': process.env.TMUX_FP || 'worker-up',
+  'X-Signature': sig, 'X-Timestamp': ts, 'X-Fingerprint': process.env.TMUX_FP || require('./fingerprint').fingerprint(),
 }}, res => {
   let b = ''; res.on('data', c => b += c); res.on('end', () => {
     if (res.statusCode !== 200) { console.error('HTTP ' + res.statusCode + ': ' + b.slice(0, 300)); process.exit(2); }

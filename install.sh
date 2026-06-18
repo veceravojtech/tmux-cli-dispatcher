@@ -24,6 +24,7 @@ install -m 0644 "$HERE/bin/registry.js"   "$WORKER_HOME/registry.js"
 install -m 0644 "$HERE/bin/be-queue-count.js" "$WORKER_HOME/be-queue-count.js"
 install -m 0644 "$HERE/bin/status-report.js"    "$WORKER_HOME/status-report.js"
 install -m 0644 "$HERE/bin/control-listener.js" "$WORKER_HOME/control-listener.js"
+install -m 0644 "$HERE/bin/fingerprint.js"      "$WORKER_HOME/fingerprint.js"
 echo "    scripts installed"
 
 # --- Signing key (secret): $TMUX_KEY > project keys/private.pem > already present ---

@@ -14,7 +14,7 @@ url.searchParams.set('status', status);
 url.searchParams.set('limit', '1');
 if (project) url.searchParams.set('project', project);
 const req = https.request(url, { method: 'GET', timeout: 8000, headers: {
-  'X-Signature': sig, 'X-Timestamp': ts, 'X-Fingerprint': process.env.TMUX_FP || 'remote-worker-dispatcher',
+  'X-Signature': sig, 'X-Timestamp': ts, 'X-Fingerprint': process.env.TMUX_FP || require('./fingerprint').fingerprint(),
 }}, res => {
   let b = ''; res.on('data', c => b += c); res.on('end', () => {
     if (res.statusCode !== 200) { console.error('HTTP ' + res.statusCode + ': ' + b.slice(0, 300)); process.exit(2); }

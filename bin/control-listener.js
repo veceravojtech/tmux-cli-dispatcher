@@ -14,7 +14,7 @@ const crypto = require('crypto'), fs = require('fs'), https = require('https'),
 const KEY = process.env.TMUX_KEY || (process.env.HOME + '/.tmux-cli-worker/keys/private.pem');
 const BASE = process.env.TMUX_CLI_API_URL || 'https://tmux.vojta.ai';
 const WORKER_HOME = process.env.WORKER_HOME || (process.env.HOME + '/.tmux-cli-worker');
-const FP = process.env.TMUX_FP || 'remote-worker-dispatcher';
+const FP = process.env.TMUX_FP || require('./fingerprint').fingerprint();
 const HN = os.hostname();
 const key = crypto.createPrivateKey(fs.readFileSync(KEY, 'utf8'));
 const log = (...a) => console.error(new Date().toISOString(), ...a);
