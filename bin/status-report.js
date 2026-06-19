@@ -16,6 +16,13 @@ const WORKER_HOME = process.env.WORKER_HOME || (process.env.HOME + '/.tmux-cli-w
 const FP = process.env.TMUX_FP || require('./fingerprint').fingerprint();
 const HN = os.hostname();
 const INTERVAL = (parseInt(process.env.STATUS_INTERVAL || '20', 10)) * 1000;
+// Host-level git deploy PUBLIC key, surfaced in the web deploy form so an operator can authorize a
+// NEW private repo before deploying it to this host. Read once from TMUX_DEPLOY_PUBKEY or the
+// conventional ~/.ssh/id_tmux_deploy.pub; null/absent is fine (the form shows a not-reported note).
+const DEPLOY_PUBKEY = (() => {
+  const p = process.env.TMUX_DEPLOY_PUBKEY || (process.env.HOME + '/.ssh/id_tmux_deploy.pub');
+  try { const k = fs.readFileSync(p, 'utf8').trim(); return k || null; } catch { return null; }
+})();
 const key = crypto.createPrivateKey(fs.readFileSync(KEY, 'utf8'));
 const log = (...a) => console.error(new Date().toISOString(), ...a);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -81,7 +88,7 @@ async function reportOnce() {
     const runtimeState = paused(b.projectName) ? 'paused' : consuming ? 'consuming' : sid ? 'idle' : 'down';
     workers.push({ project: b.projectName, runtimeState, activity: currentGoal(b.path), laneNew: await laneNew(b.projectName) });
   }
-  const r = await signed('POST', '/api/v1/dispatchers/heartbeat', { hostname: HN, workers });
+  const r = await signed('POST', '/api/v1/dispatchers/heartbeat', { hostname: HN, workers, deployKey: DEPLOY_PUBKEY });
   if (r.status === 404) log('heartbeat 404 — web fleet API not deployed yet (workers:', workers.length + ')');
   else if (r.status !== 200) log('heartbeat HTTP', r.status, r.body.slice(0, 200));
 }
