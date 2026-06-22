@@ -68,6 +68,18 @@ window0_idle() {
   echo "$p" | grep -q "for agents" || return 1
   return 0
 }
+# The cosmetic "How is Claude doing this session?" survey never clears on its own
+# and pins window0_idle to busy, so it would wedge the lane forever (the only reason
+# a survey ever cleared in the wild was an unrelated session recycle). It is always
+# safe to dismiss — answer 0 ("Dismiss"). Fire-and-forget; the next idle check sees
+# it gone. Scoped to this exact survey so real decisions (trust-folder, permission
+# prompts) are left for window0_idle to keep blocking on.
+dismiss_survey() {
+  local s="$1"
+  tmux capture-pane -t "$s:0" -p 2>/dev/null | grep -q "How is Claude doing" || return 1
+  log "auto-dismissing 'How is Claude doing' survey on $s (key 0)"
+  tmux send-keys -t "$s:0" "0"; sleep 0.5
+}
 dispatch_inflight() {
   [ -f "$LOCK" ] || return 1
   local age=$(( $(date +%s) - $(stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
@@ -143,6 +155,7 @@ while true; do
   [ -f "$PAUSED" ] && { log "PAUSED flag present — exiting (cron will not revive while flag exists)"; exit 0; }
   ensure_session
   S=$(find_session) || { log "session unavailable; retry ${POLL_IDLE}s"; sleep "$POLL_IDLE"; continue; }
+  dismiss_survey "$S"  # clear the cosmetic session survey before it can wedge the idle gate
   # Per-lane pause (set near-instantly by control-listener on a 'paused'/'stopped'
   # desiredState): keep the session warm but stop consuming. Global PAUSED (above)
   # exits; this one just idles the lane.
