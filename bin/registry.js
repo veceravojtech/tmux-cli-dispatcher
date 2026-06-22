@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Signed GET of the project-binding registry for a hostname. Prints one binding
-// per line, TAB-separated: projectName <TAB> path <TAB> repository <TAB> branch
+// per line, TAB-separated:
+//   projectName <TAB> path <TAB> repository <TAB> branch <TAB> gateUrl
+// gateUrl is the optional pre-dispatch reachability gate (empty = none).
 const crypto = require('crypto'), fs = require('fs'), https = require('https'), os = require('os');
 const KEY = process.env.TMUX_KEY || (process.env.HOME + '/.tmux-cli-worker/keys/private.pem');
 const BASE = process.env.TMUX_CLI_API_URL || 'https://tmux.vojta.ai';
@@ -15,7 +17,7 @@ const req = https.request(url, { method: 'GET', timeout: 8000, headers: {
 }}, res => {
   let b = ''; res.on('data', c => b += c); res.on('end', () => {
     if (res.statusCode !== 200) { console.error('HTTP ' + res.statusCode + ': ' + b.slice(0, 300)); process.exit(2); }
-    try { for (const x of (JSON.parse(b).bindings || [])) console.log([x.projectName, x.path, x.repository, x.branch || ''].join('\t')); }
+    try { for (const x of (JSON.parse(b).bindings || [])) console.log([x.projectName, x.path, x.repository, x.branch || '', x.gateUrl || ''].join('\t')); }
     catch (e) { console.error('parse: ' + e.message); process.exit(3); }
   });
 });

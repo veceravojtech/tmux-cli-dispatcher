@@ -37,8 +37,29 @@ dispatcher_running() {  # $1 = project path
   return 1
 }
 
-while IFS=$'\t' read -r name path repo branch; do
+# Materialise (or remove) a lane's pre-dispatch gate file from the registry's gateUrl. dispatcher.sh
+# re-reads $WORKER_HOME/gate-<lane>.sh on every dispatch, so an admin edit on the fleet dashboard
+# takes effect on the next worker-up tick (~60s) with no dispatcher restart. Empty gateUrl => no gate.
+reconcile_gate() {
+  local lane="$1" url="$2"
+  # Separate statement: a single `local a=$1 g=...$a...` expands $a against the OUTER scope (empty)
+  # before the assignment lands, which would yield gate-.sh. Assign gate only after lane is set.
+  local gate="$WORKER_HOME/gate-$lane.sh"
+  if [ -z "$url" ]; then
+    [ -f "$gate" ] && { rm -f "$gate"; log "[$lane] gate cleared (no gateUrl in registry)"; }
+    return
+  fi
+  local want="#!/usr/bin/env bash
+# Auto-generated from the registry gateUrl for lane '$lane'. Do not edit by hand.
+exec \"\$HOME/.tmux-cli-worker/vpn-gate.sh\" '$url'"
+  if [ ! -f "$gate" ] || [ "$(cat "$gate")" != "$want" ]; then
+    printf '%s\n' "$want" > "$gate"; chmod 0755 "$gate"; log "[$lane] gate set -> $url"
+  fi
+}
+
+while IFS=$'\t' read -r name path repo branch gate_url; do
   [ -z "$name" ] || [ -z "$path" ] && continue
+  reconcile_gate "$name" "$gate_url"
   # 1) provision: clone the repo into path if it isn't there yet
   if [ ! -d "$path/.git" ]; then
     log "[$name] provisioning: git clone $repo -> $path (branch=${branch:-default})"

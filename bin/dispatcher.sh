@@ -20,6 +20,22 @@ LANE="$(resolve_lane)"
 
 CONSUME_N="${CONSUME_N:-10}"; POLL="${POLL:-20}"; POLL_IDLE="${POLL_IDLE:-60}"
 GRACE="${GRACE:-600}"; HEARTBEAT="${HEARTBEAT:-300}"
+# Optional pre-dispatch gate: a command that must exit 0 immediately before a consume
+# is sent, so a lane that can't work offline (e.g. needs the Previo VPN up + the git
+# host reachable) holds its queue instead of dispatching into a broken environment.
+# Resolution is RE-EVALUATED on every dispatch (not cached at startup): $DISPATCH_GATE
+# env (explicit) else $WORKER_HOME/gate-<lane>.sh if executable. The gate file itself is
+# materialised by worker-up.sh from the registry's gateUrl, so an admin edit on the fleet
+# dashboard takes effect here within one worker-up tick — no dispatcher restart needed.
+# Unset/absent => no gate (default; github lanes like cli/web dispatch unconditionally).
+# A failing gate keeps the session warm and skips the consume, exactly like a per-lane
+# pause — so the lane resumes on its own the moment the gate passes (VPN comes back).
+dispatch_gate_ok() {
+  local gate="${DISPATCH_GATE:-}"
+  [ -z "$gate" ] && [ -n "$LANE" ] && [ -x "$WORKER_HOME/gate-$LANE.sh" ] && gate="$WORKER_HOME/gate-$LANE.sh"
+  [ -z "$gate" ] && return 0
+  bash -c "$gate" >>"$LOG" 2>&1
+}
 # Self-update of the tmux-cli binary from source (built with `make install`),
 # performed only at the idle dispatch gate. CLI_SRC is the local tmux-cli git
 # checkout; on hosts without it the whole feature is a silent no-op.
@@ -150,6 +166,13 @@ while true; do
   fi
   N=$(count_new)
   if [ "$N" -gt 0 ]; then
+    # Precondition gate (e.g. VPN up): when set and failing, hold the queue rather than
+    # dispatch into an unworkable environment. Keep the session warm; retry next tick.
+    if ! dispatch_gate_ok; then
+      idle_streak=0; rm -f "$LOCK"; now=$(date +%s)
+      [ $(( now - last_hb )) -ge "$HEARTBEAT" ] && { log "lane $LANE: dispatch gate failing — holding NEW=$N (session warm)"; last_hb=$now; }
+      sleep "$POLL_IDLE"; continue
+    fi
     # Idle + work present = the safe moment to adopt a new tmux-cli build. Build
     # if behind, then recreate the session so the consume runs on the new binary
     # (ensure_session at the top of the next tick respawns it on the new code).
