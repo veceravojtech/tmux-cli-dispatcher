@@ -95,12 +95,19 @@ send_consume() {
   touch "$LOCK"
 }
 
-# Track the remote tmux-cli branch and (re)build via `make install` when the
-# installed binary is behind. Throttled (UPDATE_CHECK_INTERVAL) and serialized
-# across all per-project dispatchers on this host (flock). NON-DESTRUCTIVE: an
-# ff-merge is attempted only when the checkout is clean and has an upstream; a
-# dirty/diverged checkout is left untouched (it still builds whatever HEAD is).
-# `install: build` means a failed compile never overwrites the live binary.
+# Track the remote tmux-cli branch and rebuild when the installed binary is
+# behind. The build+install itself is delegated to `tmux-cli self-update`
+# (which never overwrites the live binary on a failed compile and reports
+# binary_changed on its single JSON stdout line); the inline `make install`
+# survives only as the bootstrap/legacy fallback for hosts whose binary is
+# absent or predates the subcommand. Throttled (UPDATE_CHECK_INTERVAL) and
+# serialized across all per-project dispatchers on this host (flock).
+# NON-DESTRUCTIVE: an ff-merge is attempted only when the checkout is clean
+# and has an upstream; a dirty/diverged checkout is left untouched (it still
+# builds whatever HEAD is).
+self_update_supported() {
+  [ -x "$TMUXCLI" ] && "$TMUXCLI" self-update --help >/dev/null 2>&1
+}
 maybe_build_cli() {
   [ -d "$CLI_SRC/.git" ] || return 0
   local now; now=$(date +%s)
@@ -125,8 +132,29 @@ maybe_build_cli() {
     want=$(git -C "$CLI_SRC" describe --tags --match 'v*' --always 2>/dev/null)
     have=$("$TMUXCLI" --version 2>/dev/null | awk '{print $3}'); have=${have%-dirty}
     [ -n "$want" ] && [ "$want" != "$have" ] || exit 0
-    log "cli: building ${have:-unknown} -> $want (make -C $CLI_SRC install)"
-    if make -C "$CLI_SRC" install >>"$LOG" 2>&1 && "$TMUXCLI" --version >/dev/null 2>&1; then
+    local build_ok=0 out rc
+    if self_update_supported; then
+      log "cli: building ${have:-unknown} -> $want (self-update --source $CLI_SRC)"
+      # --project "$WORKER_HOME" + --restart daemon keep self-update's restart
+      # dispatch inert: the only side effect is a $WORKER_HOME/.tmux-cli/
+      # taskvisor-restart marker that no taskvisor ever consumes. Do NOT point
+      # --project at the lane dir — that trips the self-target refusal on the
+      # cli lane (PROJECT_DIR == CLI_SRC) and leaves a stale marker the lane's
+      # next daemon start would misread as a planned restart (auto-activate).
+      out=$("$TMUXCLI" self-update --source "$CLI_SRC" --project "$WORKER_HOME" --restart daemon 2>>"$LOG"); rc=$?
+      if [ "$rc" -eq 0 ]; then
+        # Exit 0 ⇒ exactly one JSON line on stdout; non-zero ⇒ no JSON, live
+        # binary untouched (never treat a failed build as a broken binary).
+        build_ok=1
+        echo "$out" | grep -q '"binary_changed":true' \
+          || log "cli: self-update reported binary unchanged"
+      fi
+    else
+      # Bootstrap/legacy lane: binary absent or predates `self-update`.
+      log "cli: building ${have:-unknown} -> $want (make -C $CLI_SRC install)"
+      make -C "$CLI_SRC" install >>"$LOG" 2>&1 && build_ok=1
+    fi
+    if [ "$build_ok" = 1 ] && "$TMUXCLI" --version >/dev/null 2>&1; then
       # gofmt may have reformatted committed files; if we started clean, restore
       # them so a build-dirtied tree never blocks future ff-merges.
       if [ "$clean" = 1 ] && { ! git -C "$CLI_SRC" diff --quiet || ! git -C "$CLI_SRC" diff --cached --quiet; }; then
